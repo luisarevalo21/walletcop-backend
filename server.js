@@ -47,8 +47,8 @@ app.get("/protected", requireAuth(), (req, res) => {
 
 // Error handling middleware function
 app.use((err, req, res, next) => {
-  console.log("error occured");
-  console.error(err.stack);
+  // console.log("error occured");
+  // console.error(err.stack);
   return res.status(401).send("Unauthenticated!");
 });
 app.use("/user", userRouter);

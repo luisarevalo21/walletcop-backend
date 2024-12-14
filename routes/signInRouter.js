@@ -10,7 +10,6 @@ router.post("/user", async (req, res) => {
     const { newUser } = req.body;
     const { email, firstName, lastName, id } = newUser;
     let existingUser = await User.findOne({ email });
-    // console.log("existingUser", existingUser);
     if (!existingUser) {
       const newUser = new User({
         email,
@@ -31,7 +30,6 @@ router.post("/user", async (req, res) => {
       existingUser.favorites = defaultFavorites;
 
       const res = await existingUser.save();
-      console.log("res", res);
     }
     res.redirect("/dashboard"); // Redirect to your desired route after successful login
   } catch (err) {

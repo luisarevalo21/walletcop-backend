@@ -5,7 +5,6 @@ const Category = require("../models/categories.js");
 router.get("/", async (req, res) => {
   try {
     const results = await Category.find();
-    console.log("restuls", results);
     return res.status(200).json(results);
   } catch (err) {
     console.log(err);

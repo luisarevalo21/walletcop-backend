@@ -25,13 +25,10 @@ router.get("/:bankName", async (req, res) => {
       _id: 1,
     });
 
-    console.log(cards);
     if (cards.length === 0) {
       return [];
     }
     return res.status(200).json(cards);
-
-    // console.log("banks caleld", req.params.bankName);
   } catch (err) {
     console.log(err);
   }
