@@ -37,7 +37,6 @@ const userSchema = new Schema({
           required: true,
           validate: {
             validator: async function (value) {
-              console.log("value", value);
               const categoryExists = await mongoose.model("Category").exists({ category: value });
               return categoryExists;
             },
