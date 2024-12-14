@@ -15,6 +15,9 @@ const bankRouter = require("./routes/bankRouter");
 const userRouter = require("./routes/userRouter");
 const User = require("./models/user");
 const Category = require("./models/categories");
+const helmet = require("helmet");
+app.use(helmet());
+
 connectDB();
 
 app.use(clerkMiddleware());
@@ -28,13 +31,17 @@ app.use((req, res, next) => {
   }
 });
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static("public"));
+// app.use(express.static("public"));
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );
+
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 app.get("/auth-state", (req, res) => {
   const authState = req.auth;

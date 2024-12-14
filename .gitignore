@@ -4,3 +4,4 @@ node_modules
 /frontend
 ../frontend
 .package-lock.json
+./package-lock.json
