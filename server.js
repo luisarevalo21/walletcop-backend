@@ -39,9 +39,9 @@ app.use(
   })
 );
 
-app.get("/", (req, res) => {
-  console.log("hello");
-});
+// app.get("/", (req, res) => {
+//   console.log("hello");
+// });
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
