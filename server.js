@@ -1,13 +1,15 @@
 require("dotenv").config();
 
 const express = require("express");
+const jwt = require("jsonwebtoken");
+
 const app = express();
 const port = process.env.PORT || 3000;
 const cors = require("cors");
 const bodyParser = require("body-parser");
+const { createClient } = require("@supabase/supabase-js");
 
-const { clerkMiddleware, requireAuth } = require("@clerk/express");
-const { Webhook } = require("svix");
+const { requireAuth } = require("@clerk/express");
 const connectDB = require("./db/index");
 const cardRouter = require("./routes/cardRouter");
 const categoryRouter = require("./routes/categoryRouter");
@@ -19,25 +21,42 @@ const helmet = require("helmet");
 app.use(helmet());
 
 connectDB();
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-app.use(clerkMiddleware());
-// app.use(express.json());
+app.use(express.json());
 
-app.use((req, res, next) => {
-  if (!req.path.startsWith("/api/webhooks")) {
-    express.json()(req, res, next);
-  } else {
-    next();
-  }
-});
 app.use(express.urlencoded({ extended: true }));
+
 // app.use(express.static("public"));
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: process.env.CLIENT_URL || ["http://localhost:5173", "https://generous-similarly-marmoset.ngrok-free.app"],
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );
+
+// Middleware to authenticate user
+const authenticateUser = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({ error: "Authorization token missing" });
+  }
+
+  const token = authHeader.split(" ")[1]; // Bearer <token>
+
+  try {
+    // Verify JWT token using Supabase JWT secret
+    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
+    req.user = decoded; // Attach user info to request
+    next();
+  } catch (error) {
+    console.error("Token verification failed:", error.message);
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+};
 
 // app.get("/", (req, res) => {
 //   console.log("hello");
@@ -55,167 +74,83 @@ app.get("/protected", requireAuth(), (req, res) => {
   res.send("This is a protected route");
 });
 
-// Error handling middleware function
-app.use((err, req, res, next) => {
-  // console.log("error occured");
-  // console.error(err.stack);
-  return res.status(401).send("Unauthenticated!");
-});
-app.use("/user", userRouter);
-app.use("/banks", requireAuth(), bankRouter);
-app.use("/cards", requireAuth(), cardRouter);
-app.use("/categories", requireAuth(), categoryRouter);
-// app.use("/cards", requireAuth(), cardRouter);
-app.post(
-  "/api/webhooks",
-  // This is a generic method to parse the contents of the payload.
-  // Depending on the framework, packages, and configuration, this may be
-  // different or not required.
-  bodyParser.raw({ type: "application/json" }),
+const addCategoryData = async () => {
+  const defaultCategoryNames = ["Gas", "Dining", "Groceries", "Travel"]; // Replace with your default names
+  const defaultCategories = await Category.find({
+    category: { $in: defaultCategoryNames },
+  });
+  return defaultCategories.map(category => {
+    return {
+      categoryName: category.category,
+      categoryId: category._id,
+    };
+  });
+};
+const saveUserToDB = async userData => {
+  try {
+    const existingUser = await User.findOne({ email: userData.email });
 
-  async (req, res) => {
-    const defaultCategoryNames = ["Gas", "Dining", "Groceries", "Travel"]; // Replace with your default names
-    const defaultCategories = await Category.find({
-      category: { $in: defaultCategoryNames },
-    });
-
-    const data = defaultCategories.map(category => {
-      return {
-        categoryName: category.category,
-        categoryId: category._id,
-      };
-    });
-
-    const SIGNING_SECRET = process.env.SIGNING_SECRET;
-
-    if (!SIGNING_SECRET) {
-      throw new Error("Error: Please add SIGNING_SECRET from Clerk Dashboard to .env");
-    }
-    const payload = req.body;
-    const headers = req.headers;
-
-    const wh = new Webhook(SIGNING_SECRET);
-    let result = null;
-    try {
-      result = wh.verify(payload, headers);
-    } catch (err) {
-      res.status(400).json({});
+    if (existingUser?.favorites?.length === 0) {
+      const categories = await addCategoryData();
+      existingUser.favorites = categories;
+      await existingUser.save();
     }
 
-    if (result.data.user_id) {
-      try {
-        const userId = result.data.user_id;
-        const foundUser = await User.findOne({
-          googleId: userId,
-        });
-
-        if (foundUser.length !== 0) {
-          if (foundUser.favorites.length === 0) {
-            foundUser.favorites = data;
-
-            await foundUser.save();
-          }
-          return res.status(200).json("okay");
-        }
-      } catch (err) {
-        console.log("error", err);
-      }
+    if (existingUser) {
+      return existingUser;
     }
-
-    // Do something with the message...
-
-    const emailAdress = result.data.email_addresses[0].email_address;
-    const firstName = result.data.first_name;
-    const lastName = result.data.last_name;
-    const googleId = result.data.id;
-    const imageUrl = result.data.image_url;
-    try {
-      const foundUser = await User.find({
-        email: emailAdress,
+    const newUser = await User.create(userData);
+    return newUser;
+  } catch (err) {
+    if (err.code === 11000) {
+      const foundUser = await User.findOne({
+        email: userData.email,
       });
-
-      if (foundUser.favorites.length === 0) {
-        const defaultFavorites = [
-          { categoryName: "Gas", categoryId: null },
-          { categoryName: "Dining", categoryId: null },
-          { categoryName: "Groceries", categoryId: null },
-        ];
-        foundUser.favorites = defaultFavorites;
+      if (foundUser?.favorites?.length === 0) {
+        const categories = await addCategoryData();
+        foundUser.favorites = categories;
         await foundUser.save();
       }
-
-      if (foundUser.length !== 0) {
-        return res.status(200).json("okay");
-      }
-
-      const newUser = new User({
-        email: emailAdress,
-        lastName,
-        firstName,
-        googleId,
-        imageUrl,
-      });
-
-      await newUser.save().then(user => {
-        res.redirect("/dashboard");
-      });
-    } catch (err) {
-      console.log("error", err);
-    }
-
-    // return res.status(200).json("okay");
-    // const    =await newUser.save()
-    // // User.
-    // add user to the db with user info and user model
-    //return back the user created to frontend
-    // return res.json({
-    //   message: result,
-    // });
-  }
-  // }
-);
-
-app.post(
-  "/api/webhooks/session",
-  // This is a generic method to parse the contents of the payload.
-  // Depending on the framework, packages, and configuration, this may be
-  // different or not required.
-  bodyParser.raw({ type: "application/json" }),
-
-  async (req, res) => {
-    const SIGNING_SECRET = process.env.SIGNING_SECRET;
-
-    if (!SIGNING_SECRET) {
-      throw new Error("Error: Please add SIGNING_SECRET from Clerk Dashboard to .env");
-    }
-    const payload = req.body;
-    const headers = req.headers;
-
-    const wh = new Webhook(SIGNING_SECRET);
-    let result = null;
-    try {
-      result = wh.verify(payload, headers);
-    } catch (err) {
-      res.status(400).json({});
-    }
-
-    try {
-      const userId = result.data.user_id;
-      const foundUser = await User.find({
-        googleId: userId,
-      });
-
-      if (foundUser.length !== 0) {
-        return res.status(200).json("okay");
-      }
-    } catch (err) {
-      console.log("error", err);
+      return foundUser;
     }
   }
-);
-// app.get("/", (req, res) => {
-//   res.send("Hello World");
+};
+
+app.post("/auth/callback", authenticateUser, async (req, res) => {
+  const { sub: userId, email } = req.user;
+  const { full_name: name, avatar_url } = req.user.user_metadata;
+
+  const [firstName, lastName] = name.split(" ");
+
+  const userData = {
+    userId,
+    email,
+    firstName,
+    lastName,
+    avatar_url,
+  };
+  try {
+    const user = await saveUserToDB(userData);
+
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error("Error processing auth callback:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Error handling middleware function
+// app.use((err, req, res, next) => {
+//   // console.log("error occured");
+//   // console.error(err.stack);
+//   return res.status(401).send("Unauthenticated!");
 // });
+
+app.use("/user", authenticateUser, userRouter);
+app.use("/banks", authenticateUser, bankRouter);
+app.use("/cards", authenticateUser, cardRouter);
+app.use("/categories", authenticateUser, categoryRouter);
+// app.use("/cards", requireAuth(), cardRouter);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
