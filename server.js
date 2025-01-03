@@ -32,7 +32,8 @@ app.use(express.urlencoded({ extended: true }));
 // app.use(express.static("public"));
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || ["http://localhost:5173", "https://generous-similarly-marmoset.ngrok-free.app"],
+    // origin: process.env.CLIENT_URL || ["http://localhost:5173", "https://generous-similarly-marmoset.ngrok-free.app"],
+    origin: process.env.CLIENT_URL || ["http://localhost:5173", "https://walletcop.onrender.com"],
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );
