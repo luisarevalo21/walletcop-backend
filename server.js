@@ -40,6 +40,7 @@ app.use(
 
 // Middleware to authenticate user
 const authenticateUser = async (req, res, next) => {
+  console.log("authenciate user");
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -88,8 +89,11 @@ const addCategoryData = async () => {
   });
 };
 const saveUserToDB = async userData => {
+  console.log("saving to db");
+
   try {
     const existingUser = await User.findOne({ email: userData.email });
+    console.log("extisint user", existingUser);
 
     if (existingUser?.favorites?.length === 0) {
       const categories = await addCategoryData();
@@ -116,6 +120,7 @@ const saveUserToDB = async userData => {
         email: userData.email,
       });
 
+      console.log("found user", foundUser);
       if (foundUser?.favorites?.length === 0) {
         const categories = await addCategoryData();
         foundUser.favorites = categories;
