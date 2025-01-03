@@ -95,17 +95,26 @@ const saveUserToDB = async userData => {
       existingUser.favorites = categories;
       await existingUser.save();
     }
+    if (!existingUser) {
+      const newUser = new User({ ...userData });
+      await newUser.save();
+      return newUser;
+    }
 
     if (existingUser) {
       return existingUser;
     }
-    const newUser = await User.create(userData);
-    return newUser;
+    // const newUser = new User({
+    //   ...existingUser,
+    // });
+    // return newUser;
   } catch (err) {
+    // console.log(err);
     if (err.code === 11000) {
       const foundUser = await User.findOne({
         email: userData.email,
       });
+
       if (foundUser?.favorites?.length === 0) {
         const categories = await addCategoryData();
         foundUser.favorites = categories;
@@ -127,7 +136,7 @@ app.post("/auth/callback", authenticateUser, async (req, res) => {
     email,
     firstName,
     lastName,
-    avatar_url,
+    imageUrl: avatar_url,
   };
   try {
     const user = await saveUserToDB(userData);

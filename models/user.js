@@ -1,58 +1,61 @@
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
-const userSchema = new Schema({
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-  },
-  firstName: {
-    type: String,
-    required: true,
-  },
-  lastName: {
-    type: String,
-    required: true,
-  },
-  googleId: {
-    type: String,
-  },
-  imageUrl: {
-    type: String,
-  },
-  wallet: [
-    {
-      creditCardId: { type: Schema.Types.ObjectId, ref: "Card" },
-      addedAt: { type: Date, default: Date.now }, // Timestamp when the card was added
+const userSchema = new Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+      unique: true,
     },
-  ],
-  favorites: {
-    type: [
+    firstName: {
+      type: String,
+      required: true,
+    },
+    lastName: {
+      type: String,
+      required: true,
+    },
+    userId: {
+      type: String,
+    },
+    imageUrl: {
+      type: String,
+    },
+    wallet: [
       {
-        categoryId: { type: Schema.Types.ObjectId, ref: "Card", default: null, required: true },
-        categoryName: {
-          type: String,
-          ref: "Category",
-          required: true,
-          validate: {
-            validator: async function (value) {
-              const categoryExists = await mongoose.model("Category").exists({ category: value });
-              return categoryExists;
+        creditCardId: { type: Schema.Types.ObjectId, ref: "Card" },
+        addedAt: { type: Date, default: Date.now }, // Timestamp when the card was added
+      },
+    ],
+    favorites: {
+      type: [
+        {
+          categoryId: { type: Schema.Types.ObjectId, ref: "Card", default: null, required: true },
+          categoryName: {
+            type: String,
+            ref: "Category",
+            required: true,
+            validate: {
+              validator: async function (value) {
+                const categoryExists = await mongoose.model("Category").exists({ category: value });
+                return categoryExists;
+              },
+              message: props => `${props.value} is not a valid category!`,
             },
-            message: props => `${props.value} is not a valid category!`,
           },
+          creditCardId: { type: Schema.Types.ObjectId, ref: "Card", default: null },
         },
-        creditCardId: { type: Schema.Types.ObjectId, ref: "Card", default: null },
+      ],
+    },
+    categories: [
+      {
+        categoryId: { type: Schema.Types.ObjectId, ref: "Category" },
       },
     ],
   },
-  categories: [
-    {
-      categoryId: { type: Schema.Types.ObjectId, ref: "Category" },
-    },
-  ],
-});
+  { versionKey: false }
+);
 
 const User = mongoose.model("User", userSchema);
 module.exports = User;
