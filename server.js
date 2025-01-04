@@ -102,6 +102,7 @@ const saveUserToDB = async userData => {
     }
     if (!existingUser) {
       const newUser = new User({ ...userData });
+
       await newUser.save();
       return newUser;
     }
@@ -114,6 +115,7 @@ const saveUserToDB = async userData => {
     // });
     // return newUser;
   } catch (err) {
+    console.log("err", err);
     // console.log(err);
     if (err.code === 11000) {
       const foundUser = await User.findOne({
@@ -137,6 +139,7 @@ app.post("/auth/callback", authenticateUser, async (req, res) => {
 
   const [firstName, lastName] = name.split(" ");
 
+  console.log("fullnamte", name);
   const userData = {
     userId,
     email,
