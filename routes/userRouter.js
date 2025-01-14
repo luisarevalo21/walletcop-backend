@@ -42,9 +42,18 @@ router.post("/:userId/favorites", async (req, res) => {
       userId: userId,
     });
 
-    const favorite = user.favorites.find(fav => fav.categoryId.equals(categoryId));
-    if (favorite) {
-      favorite.creditCardId = cardId;
+    //check if previous card isn' the same the current one being changed
+    //if different remove the categoryId from previous and add it to the new one
+    //will need to change the favorites array as well with the new changes
+    //proably the issue that is occuring
+    const favoriteCard = user.favorites.find(fav => fav.categoryId.equals(categoryId));
+    console.log("favorite", favoriteCard);
+    if (favoriteCard) {
+      const foundCard = user.wallet.find(card => card.creditCardId.equals(cardId));
+      if (foundCard) {
+        foundCard.categoryId = categoryId;
+      }
+      favoriteCard.creditCardId = cardId;
       await user.save();
       return res.status(200).json(user.favorites);
     } else {
@@ -53,6 +62,50 @@ router.post("/:userId/favorites", async (req, res) => {
     // const updatedUser = await
   } catch (err) {
     console.log("error", err);
+  }
+});
+
+//updates the users favorites and the card inside their wallet
+router.put("/:userId/favorites", async (req, res) => {
+  const { userId } = req.params;
+  const { cardId, categoryName, categoryId, usersCards } = req.body;
+
+  if (!userId || !cardId || !categoryName) {
+    return res.status(400).json({ message: "no user or card or category" });
+  }
+  try {
+    const user = await User.findOne({
+      userId: userId,
+    }).populate("wallet.creditCardId");
+
+    const favoriteCategory = user.favorites.find(fav => fav.categoryId.equals(categoryId));
+    if (favoriteCategory) {
+      favoriteCategory.creditCardId = cardId;
+    } else if (!favoriteCategory) {
+      user.favorites.push({
+        categoryId: categoryId,
+        creditCardId: cardId,
+        categoryName,
+      });
+    }
+
+    let updatedFavoriteCard = null;
+    user.wallet.forEach(card => {
+      if (card?.categoryId && card?.categoryId.equals(categoryId)) {
+        card.categoryId = null; // Set to null instead of deleting for better consistency
+      }
+      if (card?.creditCardId.equals(cardId)) {
+        card.categoryId = categoryId;
+        updatedFavoriteCard = card;
+      }
+    });
+
+    await user.save();
+
+    return res.status(200).json({ message: "okay" });
+  } catch (err) {
+    console.log("error", err);
+    return res.status(400).send(err);
   }
 });
 
@@ -91,11 +144,7 @@ router.delete("/:userId/:categoryId", async (req, res) => {
   const { userId, categoryId } = req.params;
 
   try {
-    const updated = await User.findOneAndUpdate(
-      { userId: userId },
-      { $pull: { favorites: { categoryId: categoryId } } },
-      { new: true }
-    )
+    const updated = await User.findOneAndUpdate({ userId: userId }, { $pull: { favorites: { categoryId: categoryId } } }, { new: true })
       .populate("favorites.creditCardId")
       .exec();
 
@@ -151,12 +200,21 @@ router.get("/:userId/cards/:category", async (req, res) => {
       userId: userId,
     })
       .populate("wallet.creditCardId")
+      .populate("wallet.categoryId")
       .exec();
     if (!usersWallet) return res.status(400).json([]);
 
+    //get and populate the uesrs cards.
+    //filtered based on the given category id, if the cards in the uers wallet doesn't provide cashback for that caterogy filter it out
+    //next order from ascending of hihgest cashback for the given cateogry
+    //return the data
+
     const filteredCards = usersWallet.wallet.filter(cardWrapper => {
       const card = cardWrapper.creditCardId;
-      return card.category.includes(category);
+      if (card.category.includes(category)) {
+        return cardWrapper;
+      }
+      return;
     });
 
     const cardsWithCashback = filteredCards.map(cardWrapper => {
@@ -170,6 +228,7 @@ router.get("/:userId/cards/:category", async (req, res) => {
 
       return {
         ...card.toObject(),
+        categoryId: cardWrapper.categoryId,
         highestCashback: highestCashbackBonus,
       };
     });

@@ -25,12 +25,13 @@ const userSchema = new Schema(
       {
         creditCardId: { type: Schema.Types.ObjectId, ref: "Card" },
         addedAt: { type: Date, default: Date.now }, // Timestamp when the card was added
+        categoryId: { type: Schema.Types.ObjectId, ref: "Category" }, // Associated category
       },
     ],
     favorites: {
       type: [
         {
-          categoryId: { type: Schema.Types.ObjectId, ref: "Card", default: null, required: true },
+          categoryId: { type: Schema.Types.ObjectId, ref: "Category", default: null, required: true },
           categoryName: {
             type: String,
             ref: "Category",
