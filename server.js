@@ -40,7 +40,6 @@ app.use(
 
 // Middleware to authenticate user
 const authenticateUser = async (req, res, next) => {
-  console.log("authenciate user");
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
