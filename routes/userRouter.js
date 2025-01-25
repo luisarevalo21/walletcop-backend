@@ -47,7 +47,6 @@ router.post("/:userId/favorites", async (req, res) => {
     //will need to change the favorites array as well with the new changes
     //proably the issue that is occuring
     const favoriteCard = user.favorites.find(fav => fav.categoryId.equals(categoryId));
-    console.log("favorite", favoriteCard);
     if (favoriteCard) {
       const foundCard = user.wallet.find(card => card.creditCardId.equals(cardId));
       if (foundCard) {
@@ -279,7 +278,6 @@ router.delete("/:userId/favorites/:cardId", async (req, res) => {
       .populate("favorites.creditCardId")
       .exec();
 
-    // console.log("users favorites", user.favorites);
     return res.status(200).json(user.favorites);
   } catch (error) {
     console.log(error);
@@ -292,42 +290,42 @@ router.delete("/:userId/card/:creditCardId", async (req, res) => {
   if (!userId || !creditCardId) {
     return res.status(400).json({ message: "no user or credit card found" });
   }
+  try {
+    await User.findOneAndUpdate(
+      {
+        userId: userId,
+      },
+      {
+        $pull: {
+          wallet: {
+            creditCardId: creditCardId,
+          },
+        },
+      }
+    );
 
-  const walletResult = await User.findOneAndUpdate(
-    {
-      userId: userId,
-    },
-    {
-      $pull: {
-        wallet: {
-          creditCardId: creditCardId,
+    await User.findOneAndUpdate(
+      {
+        userId: userId,
+        // "favorites.creditCardId": creditCardId,
+      },
+      {
+        $set: {
+          "favorites.$[elem].creditCardId": null,
         },
       },
-    }
-  );
-  // const favoritesResult = await User.findOneAndUpdate(
-  //   { userId },
-  //   {
-  //     $pull: {
-  //       favorites: {
-  //         creditCardId: creditCardId,
-  //       },
-  //     },
-  //   },
-  //   { new: true } // Returns the updated document
-  // );
-  // if (!walletResult && !favoritesResult) {
-  //   return res.status(404).json({ message: "No user or credit card found" });
-  // }
-  // delete from users wallet and users favorites if the card is assainged to a favorite
+      {
+        arrayFilters: [{ "elem.creditCardId": creditCardId }],
+      }
+    );
 
-  // if (walletResult && favoritesResult) {
-  return res.status(200).json({ message: "successflly delted" });
-  // }
+    return res.status(200).json({ message: "successflly delted" });
+  } catch (err) {
+    return res.status(400).json({ message: "failed to delete card" });
+  }
 });
 
 router.put(`/:userId/favorites/categories`, async (req, res) => {
-  console.log("put called");
   const { userId } = req.params;
   const { creditCardId, categoryName, categoryId } = req.body;
   if (!userId || !creditCardId || !categoryName || !categoryId) {
@@ -353,7 +351,6 @@ router.put(`/:userId/favorites/categories`, async (req, res) => {
       .populate("favorites.creditCardId")
       .exec();
 
-    // console.log("user", user);
     return res.status(200).json(user.favorites);
   } catch (err) {
     console.log(err);
