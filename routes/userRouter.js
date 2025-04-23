@@ -7,10 +7,10 @@ router.post("/:userId/newcard", async (req, res) => {
     const { userId } = req.params;
     const { creditCardId } = req.body;
     const user = await User.findOne({
-      googleId: userId,
+      userId: userId,
     });
     if (!user) {
-      res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const cardExists = user.wallet.some(card => card.creditCardId.equals(creditCardId));
@@ -39,12 +39,20 @@ router.post("/:userId/favorites", async (req, res) => {
   }
   try {
     const user = await User.findOne({
-      googleId: userId,
+      userId: userId,
     });
 
-    const favorite = user.favorites.find(fav => fav.categoryId.equals(categoryId));
-    if (favorite) {
-      favorite.creditCardId = cardId;
+    //check if previous card isn' the same the current one being changed
+    //if different remove the categoryId from previous and add it to the new one
+    //will need to change the favorites array as well with the new changes
+    //proably the issue that is occuring
+    const favoriteCard = user.favorites.find(fav => fav.categoryId.equals(categoryId));
+    if (favoriteCard) {
+      const foundCard = user.wallet.find(card => card.creditCardId.equals(cardId));
+      if (foundCard) {
+        foundCard.categoryId = categoryId;
+      }
+      favoriteCard.creditCardId = cardId;
       await user.save();
       return res.status(200).json(user.favorites);
     } else {
@@ -53,6 +61,50 @@ router.post("/:userId/favorites", async (req, res) => {
     // const updatedUser = await
   } catch (err) {
     console.log("error", err);
+  }
+});
+
+//updates the users favorites and the card inside their wallet
+router.put("/:userId/favorites", async (req, res) => {
+  const { userId } = req.params;
+  const { cardId, categoryName, categoryId, usersCards } = req.body;
+
+  if (!userId || !cardId || !categoryName) {
+    return res.status(400).json({ message: "no user or card or category" });
+  }
+  try {
+    const user = await User.findOne({
+      userId: userId,
+    }).populate("wallet.creditCardId");
+
+    const favoriteCategory = user.favorites.find(fav => fav.categoryId.equals(categoryId));
+    if (favoriteCategory) {
+      favoriteCategory.creditCardId = cardId;
+    } else if (!favoriteCategory) {
+      user.favorites.push({
+        categoryId: categoryId,
+        creditCardId: cardId,
+        categoryName,
+      });
+    }
+
+    let updatedFavoriteCard = null;
+    user.wallet.forEach(card => {
+      if (card?.categoryId && card?.categoryId.equals(categoryId)) {
+        card.categoryId = null; // Set to null instead of deleting for better consistency
+      }
+      if (card?.creditCardId.equals(cardId)) {
+        card.categoryId = categoryId;
+        updatedFavoriteCard = card;
+      }
+    });
+
+    await user.save();
+
+    return res.status(200).json({ message: "okay" });
+  } catch (err) {
+    console.log("error", err);
+    return res.status(400).send(err);
   }
 });
 
@@ -66,7 +118,7 @@ router.post("/:userId/:newCategory", async (req, res) => {
   }
   try {
     const updatedUser = await User.findOneAndUpdate(
-      { googleId: userId },
+      { userId: userId },
       { $push: { favorites: { categoryName: newCategory, categoryId } } },
       {
         new: true,
@@ -91,11 +143,7 @@ router.delete("/:userId/:categoryId", async (req, res) => {
   const { userId, categoryId } = req.params;
 
   try {
-    const updated = await User.findOneAndUpdate(
-      { googleId: userId },
-      { $pull: { favorites: { categoryId: categoryId } } },
-      { new: true }
-    )
+    const updated = await User.findOneAndUpdate({ userId: userId }, { $pull: { favorites: { categoryId: categoryId } } }, { new: true })
       .populate("favorites.creditCardId")
       .exec();
 
@@ -112,13 +160,15 @@ router.delete("/:userId/:categoryId", async (req, res) => {
 router.get("/:userId/cards", async (req, res) => {
   const { userId } = req.params;
 
+  if (!userId) return [];
   try {
-    const usersCards = await User.findOne({
-      googleId: userId,
-    })
+    const usersCards = await User.findOne({ userId: userId })
       .populate("wallet.creditCardId") // Populate card details
       .exec();
 
+    if (usersCards.wallet.length === 0) {
+      return res.status(200).json([]);
+    }
     const returnData = usersCards.wallet.map(card => {
       return { ...card.creditCardId.toObject(), id: card.creditCardId.id };
     });
@@ -146,14 +196,24 @@ router.get("/:userId/cards/:category", async (req, res) => {
   const { userId, category } = req.params;
   try {
     const usersWallet = await User.findOne({
-      googleId: userId,
+      userId: userId,
     })
       .populate("wallet.creditCardId")
+      .populate("wallet.categoryId")
       .exec();
+    if (!usersWallet) return res.status(400).json([]);
+
+    //get and populate the uesrs cards.
+    //filtered based on the given category id, if the cards in the uers wallet doesn't provide cashback for that caterogy filter it out
+    //next order from ascending of hihgest cashback for the given cateogry
+    //return the data
 
     const filteredCards = usersWallet.wallet.filter(cardWrapper => {
       const card = cardWrapper.creditCardId;
-      return card.category.includes(category);
+      if (card.category.includes(category)) {
+        return cardWrapper;
+      }
+      return;
     });
 
     const cardsWithCashback = filteredCards.map(cardWrapper => {
@@ -167,6 +227,7 @@ router.get("/:userId/cards/:category", async (req, res) => {
 
       return {
         ...card.toObject(),
+        categoryId: cardWrapper.categoryId,
         highestCashback: highestCashbackBonus,
       };
     });
@@ -184,7 +245,7 @@ router.get("/:userId/favorites", async (req, res) => {
 
   try {
     const user = await User.findOne({
-      googleId: userId,
+      userId: userId,
     })
       .populate("favorites.creditCardId")
       .exec();
@@ -204,7 +265,7 @@ router.delete("/:userId/favorites/:cardId", async (req, res) => {
   try {
     const user = await User.findOneAndUpdate(
       {
-        googleId: userId,
+        userId: userId,
         "favorites.categoryId": categoryId,
       },
       {
@@ -213,7 +274,9 @@ router.delete("/:userId/favorites/:cardId", async (req, res) => {
         },
       },
       { new: true }
-    );
+    )
+      .populate("favorites.creditCardId")
+      .exec();
 
     return res.status(200).json(user.favorites);
   } catch (error) {
@@ -227,25 +290,42 @@ router.delete("/:userId/card/:creditCardId", async (req, res) => {
   if (!userId || !creditCardId) {
     return res.status(400).json({ message: "no user or credit card found" });
   }
+  try {
+    await User.findOneAndUpdate(
+      {
+        userId: userId,
+      },
+      {
+        $pull: {
+          wallet: {
+            creditCardId: creditCardId,
+          },
+        },
+      }
+    );
 
-  const result = await User.findOneAndUpdate(
-    {
-      googleId: userId,
-    },
-    {
-      $pull: {
-        wallet: {
-          creditCardId: creditCardId,
+    await User.findOneAndUpdate(
+      {
+        userId: userId,
+        // "favorites.creditCardId": creditCardId,
+      },
+      {
+        $set: {
+          "favorites.$[elem].creditCardId": null,
         },
       },
-    }
-  );
-  if (result) {
+      {
+        arrayFilters: [{ "elem.creditCardId": creditCardId }],
+      }
+    );
+
     return res.status(200).json({ message: "successflly delted" });
+  } catch (err) {
+    return res.status(400).json({ message: "failed to delete card" });
   }
 });
 
-router.put(`/:userId/favorites`, async (req, res) => {
+router.put(`/:userId/favorites/categories`, async (req, res) => {
   const { userId } = req.params;
   const { creditCardId, categoryName, categoryId } = req.body;
   if (!userId || !creditCardId || !categoryName || !categoryId) {
@@ -254,7 +334,7 @@ router.put(`/:userId/favorites`, async (req, res) => {
   try {
     const user = await User.findOneAndUpdate(
       {
-        googleId: userId,
+        userId: userId,
       },
 
       {
